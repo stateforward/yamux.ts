@@ -1,4 +1,4 @@
-# yamux.ts
+# @stateforward/yamux.ts
 
 Browser-native Yamux multiplexing over Web Streams.
 
@@ -7,7 +7,7 @@ Browser-native Yamux multiplexing over Web Streams.
 <!-- install command matching package.json#name -->
 
 ```sh
-npm install yamux.ts
+npm install @stateforward/yamux.ts
 ```
 
 ## Runtime Dependency
@@ -79,7 +79,7 @@ npm install yamux.ts
 ## Example
 
 ```ts
-import { createClient } from "yamux.ts";
+import { createClient } from "@stateforward/yamux.ts";
 
 const session = createClient({
   readable: socket.readable,
