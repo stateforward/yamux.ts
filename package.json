@@ -1,6 +1,6 @@
 {
   "name": "@stateforward/yamux.ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser-native Yamux multiplexing over Web Streams",
   "type": "module",
   "license": "MPL-2.0",
