@@ -28,6 +28,7 @@ const IMPLEMENTATIONS = [
     run: runYamuxJs,
   },
 ];
+const SELECTED_IMPLEMENTATIONS = selectImplementations(IMPLEMENTATIONS);
 
 async function main() {
   console.log(`node ${process.version}`);
@@ -39,7 +40,7 @@ async function main() {
   const rows = [];
   for (const scenario of SCENARIOS) {
     const scenarioRows = [];
-    for (const implementation of IMPLEMENTATIONS) {
+    for (const implementation of SELECTED_IMPLEMENTATIONS) {
       const result = await measure(implementation, scenario);
       scenarioRows.push(result);
       rows.push(result);
@@ -357,6 +358,9 @@ function printTable(rows) {
     "MiB/s": row.mibPerSecond.toFixed(1),
     "vs yamux-js": `${row.vsYamuxJs.toFixed(2)}x`,
   }));
+  if (table.length === 0) {
+    throw new Error("benchmark selected no implementations");
+  }
   const headers = Object.keys(table[0]);
   const widths = Object.fromEntries(
     headers.map((header) => [
@@ -391,6 +395,21 @@ function parseScenarios() {
       concurrency: parsePositiveInteger(concurrency, "scenario concurrency"),
     },
   ];
+}
+
+function selectImplementations(implementations) {
+  const selected = process.env.YAMUX_BENCH_IMPLEMENTATION;
+  if (!selected) {
+    return implementations;
+  }
+
+  const selectedNames = new Set(selected.split(",").map((name) => name.trim()).filter(Boolean));
+  const filtered = implementations.filter((implementation) => selectedNames.has(implementation.name));
+  if (filtered.length === 0) {
+    const available = implementations.map((implementation) => implementation.name).join(", ");
+    throw new Error(`YAMUX_BENCH_IMPLEMENTATION matched no implementations; available: ${available}`);
+  }
+  return filtered;
 }
 
 function readPositiveIntegerEnv(name, fallback) {

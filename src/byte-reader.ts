@@ -34,6 +34,21 @@ export class ByteReader {
       throw new YamuxError("INVALID_FRAME", "transport ended in the middle of a yamux frame");
     }
 
+    const first = this.chunks[0];
+    if (!first) {
+      throw new YamuxError("INTERNAL_ERROR", "byte reader underflow");
+    }
+    if (first.byteLength === length) {
+      this.chunks.shift();
+      this.buffered -= length;
+      return first;
+    }
+    if (first.byteLength > length) {
+      this.chunks[0] = first.subarray(length);
+      this.buffered -= length;
+      return first.subarray(0, length);
+    }
+
     const output = new Uint8Array(length);
     let written = 0;
 

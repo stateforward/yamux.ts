@@ -37,6 +37,7 @@ describe("yamux protocol", () => {
     expect(() => encodeHeader(YamuxFrameType.Data, 0x10, 0, 0)).toThrow(RangeError);
     expect(() => encodeHeader(YamuxFrameType.Data, 0, -1, 0)).toThrow(RangeError);
     expect(() => encodeHeader(YamuxFrameType.Data, 0, 0, MAX_UINT32 + 1)).toThrow(RangeError);
+    expect(() => frameToBytes(99 as YamuxFrameType, 0, 0, 0)).toThrow(RangeError);
     expect(() => frameToBytes(YamuxFrameType.Data, 0, 1, 2, new Uint8Array([1]))).toThrow(RangeError);
     expect(frameToBytes(YamuxFrameType.Data, 0, 1, 0)).toHaveLength(HEADER_SIZE);
     expect(() => frameToBytes(YamuxFrameType.Ping, 0, 0, 0, new Uint8Array([1]))).toThrow(RangeError);

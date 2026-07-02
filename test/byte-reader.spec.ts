@@ -12,6 +12,10 @@ describe("byte reader", () => {
     await expect(split.readExactly(2)).resolves.toEqual(new Uint8Array([1, 2]));
     await expect(split.readExactly(1)).resolves.toEqual(new Uint8Array([3]));
 
+    const splitInsideChunk = new ByteReader(chunksReadable([new Uint8Array([4]), new Uint8Array([5, 6])]));
+    await expect(splitInsideChunk.readExactly(2)).resolves.toEqual(new Uint8Array([4, 5]));
+    await expect(splitInsideChunk.readExactly(1)).resolves.toEqual(new Uint8Array([6]));
+
     const withEmptyChunk = new ByteReader(chunksReadable([new Uint8Array(0), new Uint8Array([9])]));
     await expect(withEmptyChunk.readExactly(1)).resolves.toEqual(new Uint8Array([9]));
 
@@ -22,5 +26,10 @@ describe("byte reader", () => {
     const underflow = new ByteReader(emptyReadable());
     (underflow as unknown as { buffered: number }).buffered = 1;
     await expect(underflow.readExactly(1)).rejects.toMatchObject({ code: "INTERNAL_ERROR" });
+
+    const slowPathUnderflow = new ByteReader(emptyReadable());
+    (slowPathUnderflow as unknown as { chunks: Uint8Array[]; buffered: number }).chunks = [new Uint8Array([1])];
+    (slowPathUnderflow as unknown as { buffered: number }).buffered = 2;
+    await expect(slowPathUnderflow.readExactly(2)).rejects.toMatchObject({ code: "INTERNAL_ERROR" });
   });
 });

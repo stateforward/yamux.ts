@@ -201,10 +201,7 @@ export class Session extends hsm.Instance {
     return withTimeout(
       (async () => {
         this.assertCanOpenStream();
-        await this.dispatch(Session.openStreamEvent);
-        const stream = await this.createOutboundStream();
-        await this.dispatch({ ...Session.streamOpenedEvent, data: { stream } });
-        return stream;
+        return this.createOutboundStream();
       })(),
       options.timeoutMs,
       options.signal,
@@ -215,7 +212,6 @@ export class Session extends hsm.Instance {
     if (this.goAwayReceived && this.incoming.length === 0) {
       throw new YamuxError("GO_AWAY", "peer sent go away; no new streams will arrive");
     }
-    await this.dispatch(Session.acceptStreamEvent);
     return this.shiftIncoming(options);
   }
 
@@ -262,7 +258,7 @@ export class Session extends hsm.Instance {
     await this.goAway(code);
     const reason = new YamuxError("SESSION_CLOSED", "session closed");
     for (const stream of [...this.streams.values()]) {
-      await stream.forceClose(reason);
+      stream.forceClose(reason);
     }
     this.incoming.close(reason);
     await this.closeWriter();
@@ -313,9 +309,7 @@ export class Session extends hsm.Instance {
           throw new YamuxError("INVALID_FRAME", "data frame ended before payload");
         }
 
-        const frame: YamuxFrame = { header, payload };
-        await this.dispatch({ ...Session.frameEvent, data: { frame } });
-        await this.handleFrame(frame);
+        await this.handleFrame({ header, payload });
       }
       await this.markTransportClosed(new YamuxError("SESSION_CLOSED", "session transport closed"));
     } catch (error) {
@@ -325,22 +319,19 @@ export class Session extends hsm.Instance {
     }
   }
 
-  protected async handleFrame(frame: YamuxFrame): Promise<void> {
+  protected handleFrame(frame: YamuxFrame): Promise<void> | void {
     switch (frame.header.type) {
       case YamuxFrameType.Data:
       case YamuxFrameType.WindowUpdate:
-        await this.handleStreamFrame(frame);
-        return;
+        return this.handleStreamFrame(frame);
       case YamuxFrameType.Ping:
-        await this.handlePing(frame.header);
-        return;
+        return this.handlePing(frame.header);
       case YamuxFrameType.GoAway:
-        await this.handleGoAway(frame.header);
-        return;
+        return this.handleGoAway(frame.header);
     }
   }
 
-  protected async handleStreamFrame(frame: YamuxFrame): Promise<void> {
+  protected handleStreamFrame(frame: YamuxFrame): Promise<void> | void {
     const { header, payload } = frame;
     if (header.streamID === 0) {
       throw new YamuxError("PROTOCOL_ERROR", "data and window update frames require a stream id");
@@ -350,36 +341,41 @@ export class Session extends hsm.Instance {
 
     if (hasFlag(header.flags, YamuxFlag.RST)) {
       if (stream) {
-        await stream.receiveReset();
+        stream.receiveReset();
       }
       return;
     }
 
     if (hasFlag(header.flags, YamuxFlag.SYN)) {
-      if (stream) {
-        await this.sendReset(header.streamID);
-        throw new YamuxError("DUPLICATE_STREAM", `duplicate stream id ${header.streamID}`);
-      }
-      stream = await this.createInboundStream(header.streamID);
+      return this.handleSynStreamFrame(frame, stream);
     }
 
     if (!stream) {
+      return this.sendReset(header.streamID);
+    }
+
+    this.applyStreamFrame(stream, header, payload);
+  }
+
+  protected async handleSynStreamFrame(frame: YamuxFrame, existing: Stream | undefined): Promise<void> {
+    const { header, payload } = frame;
+    if (existing) {
       await this.sendReset(header.streamID);
-      return;
+      throw new YamuxError("DUPLICATE_STREAM", `duplicate stream id ${header.streamID}`);
     }
+    const stream = await this.createInboundStream(header.streamID);
+    this.applyStreamFrame(stream, header, payload);
+  }
 
-    if (hasFlag(header.flags, YamuxFlag.ACK)) {
-      await stream.receiveAck();
-    }
-
+  protected applyStreamFrame(stream: Stream, header: YamuxHeader, payload: Uint8Array): void {
     if (header.type === YamuxFrameType.WindowUpdate) {
       stream.receiveWindowUpdate(header.length);
     } else {
-      await stream.receiveData(payload);
+      stream.receiveData(payload);
     }
 
     if (hasFlag(header.flags, YamuxFlag.FIN)) {
-      await stream.receiveFin();
+      stream.receiveFin();
     }
   }
 
@@ -417,16 +413,15 @@ export class Session extends hsm.Instance {
 
   protected async createOutboundStream(): Promise<Stream> {
     const streamID = this.allocateStreamID();
-    const stream = hsm.start(new Stream({
+    const stream = new Stream({
       id: streamID,
       session: this,
       local: true,
       receiveWindow: this.receiveWindow,
       maxFrameSize: this.maxFrameSize,
-    }), Stream.model) as unknown as Stream;
+    });
 
     this.streams.set(streamID, stream);
-    await stream.sentSyn();
     await this.sendWindowUpdate(streamID, YamuxFlag.SYN, stream.extraReceiveWindow);
     return stream;
   }
@@ -441,19 +436,17 @@ export class Session extends hsm.Instance {
       throw new YamuxError("GO_AWAY", "session is not accepting new streams");
     }
 
-    const stream = hsm.start(new Stream({
+    const stream = new Stream({
       id: streamID,
       session: this,
       local: false,
       receiveWindow: this.receiveWindow,
       maxFrameSize: this.maxFrameSize,
-    }), Stream.model) as unknown as Stream;
+    });
 
     this.streams.set(streamID, stream);
-    await stream.acceptSyn();
     await this.sendWindowUpdate(streamID, YamuxFlag.ACK, stream.extraReceiveWindow);
     this.incoming.push(stream);
-    await this.dispatch({ ...Session.streamAcceptedEvent, data: { stream } });
     return stream;
   }
 
@@ -514,7 +507,7 @@ export class Session extends hsm.Instance {
 
     const reason = error instanceof Error ? error : new YamuxError("PROTOCOL_ERROR", "yamux session failed");
     for (const stream of [...this.streams.values()]) {
-      await stream.forceClose(reason);
+      stream.forceClose(reason);
     }
     this.incoming.close(reason);
     for (const pending of this.pendingPings.values()) {
@@ -541,7 +534,7 @@ export class Session extends hsm.Instance {
     }
     this.transportClosed = true;
     for (const stream of [...this.streams.values()]) {
-      await stream.forceClose(reason).catch(ignoreError);
+      stream.forceClose(reason);
     }
     this.incoming.close(reason);
     for (const pending of this.pendingPings.values()) {

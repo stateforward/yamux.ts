@@ -54,12 +54,7 @@ export function encodeHeader(
   assertFlags(flags);
 
   const bytes = new Uint8Array(HEADER_SIZE);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  view.setUint8(0, PROTOCOL_VERSION);
-  view.setUint8(1, type);
-  view.setUint16(2, flags, false);
-  view.setUint32(4, streamID, false);
-  view.setUint32(8, length, false);
+  writeHeader(bytes, type, flags, streamID, length);
   return bytes;
 }
 
@@ -68,12 +63,11 @@ export function decodeHeader(bytes: Uint8Array): YamuxHeader {
     throw new RangeError(`yamux header must be ${HEADER_SIZE} bytes`);
   }
 
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const version = view.getUint8(0);
-  const type = view.getUint8(1);
-  const flags = view.getUint16(2, false);
-  const streamID = view.getUint32(4, false);
-  const length = view.getUint32(8, false);
+  const version = bytes[0]!;
+  const type = bytes[1]!;
+  const flags = bytes[2]! * 0x100 + bytes[3]!;
+  const streamID = readUint32(bytes, 4);
+  const length = readUint32(bytes, 8);
 
   if (!isFrameType(type)) {
     throw new RangeError(`invalid yamux frame type: ${type}`);
@@ -96,20 +90,26 @@ export function frameToBytes(
   length: number,
   payload?: Uint8Array,
 ): Uint8Array {
-  const header = encodeHeader(type, flags, streamID, length);
+  if (!isFrameType(type)) {
+    throw new RangeError(`invalid yamux frame type: ${type}`);
+  }
+  assertUint32(streamID, "streamID");
+  assertUint32(length, "length");
+  assertFlags(flags);
+
   if (type === YamuxFrameType.Data && (payload?.byteLength ?? 0) !== length) {
     throw new RangeError("data frame payload length must match header length");
   }
   if (type !== YamuxFrameType.Data && payload && payload.byteLength > 0) {
     throw new RangeError("only data frames may include payload bytes");
   }
-  if (!payload || payload.byteLength === 0) {
-    return header;
-  }
 
-  const bytes = new Uint8Array(HEADER_SIZE + payload.byteLength);
-  bytes.set(header, 0);
-  bytes.set(payload, HEADER_SIZE);
+  const payloadLength = payload?.byteLength ?? 0;
+  const bytes = new Uint8Array(HEADER_SIZE + payloadLength);
+  writeHeader(bytes, type, flags, streamID, length);
+  if (payloadLength > 0) {
+    bytes.set(payload!, HEADER_SIZE);
+  }
   return bytes;
 }
 
@@ -132,4 +132,28 @@ function assertFlags(flags: number): void {
   if (!Number.isInteger(flags) || flags < 0 || flags > 0xf) {
     throw new RangeError("yamux flags must use only SYN, ACK, FIN, and RST");
   }
+}
+
+function writeHeader(bytes: Uint8Array, type: YamuxFrameType, flags: number, streamID: number, length: number): void {
+  bytes[0] = PROTOCOL_VERSION;
+  bytes[1] = type;
+  bytes[2] = flags >>> 8;
+  bytes[3] = flags;
+  bytes[4] = streamID >>> 24;
+  bytes[5] = streamID >>> 16;
+  bytes[6] = streamID >>> 8;
+  bytes[7] = streamID;
+  bytes[8] = length >>> 24;
+  bytes[9] = length >>> 16;
+  bytes[10] = length >>> 8;
+  bytes[11] = length;
+}
+
+function readUint32(bytes: Uint8Array, offset: number): number {
+  return (
+    bytes[offset]! * 0x1_00_00_00 +
+    bytes[offset + 1]! * 0x1_00_00 +
+    bytes[offset + 2]! * 0x100 +
+    bytes[offset + 3]!
+  );
 }

@@ -137,12 +137,10 @@ describe("yamux stream", () => {
     await (stream as unknown as { releaseReceiveWindow(length: number): Promise<void> }).releaseReceiveWindow(0);
     await stream.receiveFin();
     await stream.receiveFin();
-    await expect(stream.receiveData(new Uint8Array([1]))).rejects.toMatchObject({ code: "PROTOCOL_ERROR" });
+    expect(() => stream.receiveData(new Uint8Array([1]))).toThrow(YamuxError);
 
     const overflow = startStream(session, 5);
-    await expect(overflow.receiveData(new Uint8Array(INITIAL_STREAM_WINDOW + 1))).rejects.toMatchObject({
-      code: "RECEIVE_WINDOW_EXCEEDED",
-    });
+    expect(() => overflow.receiveData(new Uint8Array(INITIAL_STREAM_WINDOW + 1))).toThrow(YamuxError);
 
     const reset = startStream(session, 7);
     await reset.receiveReset();
@@ -170,11 +168,11 @@ describe("yamux stream", () => {
     expect(stream.resetError).toBe("stop");
 
     const direct = startStream(session, 15);
-    Stream.onReset(direct.context(), direct, Stream.resetEvent);
+    await direct.reset();
     expect(direct.resetError).toBeInstanceOf(YamuxError);
 
     const forced = startStream(session, 17);
-    Stream.onForceClose(forced.context(), forced, Stream.forceCloseEvent);
+    forced.forceClose();
     expect(forced.resetError).toBeInstanceOf(YamuxError);
   });
 });

@@ -41,6 +41,8 @@ npm install @stateforward/yamux.ts
 
 `npm run benchmark` builds this package and compares client-opened echo streams over an in-memory transport against `yamux-js`.
 
+See [docs/performance.md](docs/performance.md) for profiling notes and optimization history.
+
 ## API
 
 <!-- exported public API from src/index.ts -->

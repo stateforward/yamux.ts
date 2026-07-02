@@ -107,7 +107,7 @@ export class HarnessSession extends Session {
   }
 
   exposeHandleStreamFrame(frame: { header: YamuxHeader; payload: Uint8Array }): Promise<void> {
-    return this.handleStreamFrame(frame);
+    return Promise.resolve().then(() => this.handleStreamFrame(frame));
   }
 
   exposeHandlePing(header: YamuxHeader): Promise<void> {
@@ -214,11 +214,11 @@ export function startHarness(session = new HarnessSession()): HarnessSession {
 }
 
 export function startStream(session: Session, id = 1): Stream {
-  return hsm.start(new Stream({
+  return new Stream({
     id,
     session,
     local: true,
     receiveWindow: 4,
     maxFrameSize: 2,
-  }), Stream.model) as unknown as Stream;
+  });
 }

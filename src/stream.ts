@@ -1,5 +1,3 @@
-import * as hsm from "@stateforward/hsm.ts";
-
 import { AsyncQueue, Deferred } from "./async.js";
 import { YamuxError } from "./errors.js";
 import {
@@ -29,7 +27,7 @@ export type StreamEvent =
   | "reset"
   | "force_close";
 
-export class Stream extends hsm.Instance {
+export class Stream {
   readonly id: number;
   readonly session: Session;
   readonly local: boolean;
@@ -46,136 +44,7 @@ export class Stream extends hsm.Instance {
   private remoteClosed = false;
   private resetReason: unknown = null;
 
-  static localSynEvent = hsm.Event("local_syn");
-  static remoteSynEvent = hsm.Event("remote_syn");
-  static remoteAckEvent = hsm.Event("remote_ack");
-  static localFinEvent = hsm.Event("local_fin");
-  static remoteFinEvent = hsm.Event("remote_fin");
-  static resetEvent = hsm.Event("reset");
-  static forceCloseEvent = hsm.Event("force_close");
-
-  static model: hsm.Model = hsm.define(
-    "Stream",
-    hsm.state(
-      "idle",
-      hsm.transition(
-        hsm.on(Stream.localSynEvent),
-        hsm.target("/Stream/opening"),
-      ),
-      hsm.transition(
-        hsm.on(Stream.remoteSynEvent),
-        hsm.target("/Stream/open"),
-      ),
-      hsm.transition(
-        hsm.on(Stream.resetEvent),
-        hsm.target("/Stream/reset"),
-        hsm.effect(Stream.onReset as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state(
-      "opening",
-      hsm.transition(
-        hsm.on(Stream.remoteAckEvent),
-        hsm.target("/Stream/open"),
-      ),
-      hsm.transition(
-        hsm.on(Stream.localFinEvent),
-        hsm.target("/Stream/localClosed"),
-        hsm.effect(Stream.onLocalFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.remoteFinEvent),
-        hsm.target("/Stream/remoteClosed"),
-        hsm.effect(Stream.onRemoteFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.resetEvent),
-        hsm.target("/Stream/reset"),
-        hsm.effect(Stream.onReset as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state(
-      "open",
-      hsm.transition(
-        hsm.on(Stream.localFinEvent),
-        hsm.target("/Stream/localClosed"),
-        hsm.effect(Stream.onLocalFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.remoteFinEvent),
-        hsm.target("/Stream/remoteClosed"),
-        hsm.effect(Stream.onRemoteFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.resetEvent),
-        hsm.target("/Stream/reset"),
-        hsm.effect(Stream.onReset as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state(
-      "localClosed",
-      hsm.transition(
-        hsm.on(Stream.remoteFinEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onRemoteFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.resetEvent),
-        hsm.target("/Stream/reset"),
-        hsm.effect(Stream.onReset as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state(
-      "remoteClosed",
-      hsm.transition(
-        hsm.on(Stream.localFinEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onLocalFin as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.resetEvent),
-        hsm.target("/Stream/reset"),
-        hsm.effect(Stream.onReset as hsm.Operation),
-      ),
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.target("/Stream/closed"),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state(
-      "closed",
-      hsm.transition(
-        hsm.on(Stream.forceCloseEvent),
-        hsm.effect(Stream.onForceClose as hsm.Operation),
-      ),
-    ),
-    hsm.state("reset"),
-    hsm.initial(hsm.target("/Stream/idle")),
-  ) as hsm.Model;
-
   constructor(options: StreamOptions) {
-    super();
     this.id = assertPositiveUint32(options.id, "id");
     assertSession(options.session);
     if (typeof options.local !== "boolean") {
@@ -265,7 +134,6 @@ export class Stream extends hsm.Instance {
     }
     this.localClosed = true;
     await this.session.sendData(this.id, YamuxFlag.FIN, new Uint8Array(0));
-    await this.dispatch(Stream.localFinEvent);
     this.maybeDispose();
   }
 
@@ -275,21 +143,8 @@ export class Stream extends hsm.Instance {
       this.rejectWindowWaiters(reason);
       this.inbound.close(reason);
       await this.session.sendReset(this.id).catch(ignoreError);
-      await this.dispatch({ ...Stream.resetEvent, data: reason });
       this.session.deleteStream(this.id);
     }
-  }
-
-  async acceptSyn(): Promise<void> {
-    await this.dispatch(Stream.remoteSynEvent);
-  }
-
-  async sentSyn(): Promise<void> {
-    await this.dispatch(Stream.localSynEvent);
-  }
-
-  async receiveAck(): Promise<void> {
-    await this.dispatch(Stream.remoteAckEvent);
   }
 
   receiveWindowUpdate(delta: number): void {
@@ -305,7 +160,7 @@ export class Stream extends hsm.Instance {
     }
   }
 
-  async receiveData(payload: Uint8Array): Promise<void> {
+  receiveData(payload: Uint8Array): void {
     if (this.resetReason) {
       return;
     }
@@ -322,7 +177,7 @@ export class Stream extends hsm.Instance {
     }
   }
 
-  async receiveFin(): Promise<void> {
+  receiveFin(): void {
     if (this.resetReason) {
       return;
     }
@@ -331,27 +186,25 @@ export class Stream extends hsm.Instance {
     }
     this.remoteClosed = true;
     this.inbound.push(END);
-    await this.dispatch(Stream.remoteFinEvent);
     this.maybeDispose();
   }
 
-  async receiveReset(reason: unknown = new YamuxError("CONNECTION_RESET", `stream ${this.id} reset by peer`)): Promise<void> {
+  receiveReset(reason: unknown = new YamuxError("CONNECTION_RESET", `stream ${this.id} reset by peer`)): void {
     if (this.resetReason) {
       return;
     }
     this.resetReason = reason;
     this.rejectWindowWaiters(reason);
     this.inbound.close(reason);
-    await this.dispatch({ ...Stream.resetEvent, data: reason });
     this.session.deleteStream(this.id);
   }
 
-  async forceClose(reason: unknown = new YamuxError("SESSION_CLOSED", "session closed")): Promise<void> {
+  forceClose(reason: unknown = new YamuxError("SESSION_CLOSED", "session closed")): void {
     this.localClosed = true;
     this.remoteClosed = true;
+    this.resetReason = reason;
     this.rejectWindowWaiters(reason);
     this.inbound.close(reason);
-    await this.dispatch({ ...Stream.forceCloseEvent, data: reason });
     this.session.deleteStream(this.id);
   }
 
@@ -381,22 +234,6 @@ export class Stream extends hsm.Instance {
     for (const waiter of this.windowWaiters.splice(0)) {
       waiter.reject(reason);
     }
-  }
-
-  static onLocalFin(_ctx: hsm.Context, stream: Stream, _event: hsm.Event): void {
-    stream.localClosed = true;
-  }
-
-  static onRemoteFin(_ctx: hsm.Context, stream: Stream, _event: hsm.Event): void {
-    stream.remoteClosed = true;
-  }
-
-  static onReset(_ctx: hsm.Context, stream: Stream, event: hsm.Event): void {
-    stream.resetReason = event.data ?? new YamuxError("CONNECTION_RESET", `stream ${stream.id} reset`);
-  }
-
-  static onForceClose(_ctx: hsm.Context, stream: Stream, event: hsm.Event): void {
-    stream.resetReason = event.data ?? new YamuxError("SESSION_CLOSED", "session closed");
   }
 }
 
