@@ -1,0 +1,42 @@
+{
+  "name": "yamux.ts",
+  "version": "0.1.0",
+  "description": "Browser-native Yamux multiplexing over Web Streams",
+  "type": "module",
+  "license": "MPL-2.0",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "conformance": "npm run build && node conformance/run.mjs",
+    "test": "vitest run",
+    "test:browser": "node browser/run.mjs",
+    "test:coverage": "vitest run --coverage",
+    "test:fuzz": "vitest run fuzz",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@stateforward/hsm.ts": "^1.0.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.9",
+    "fast-check": "^4.8.0",
+    "playwright": "^1.61.1",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
