@@ -29,6 +29,7 @@
   },
   "types": "./dist/index.d.ts",
   "scripts": {
+    "benchmark": "npm run build && node benchmarks/yamux-js.mjs",
     "build": "tsc -p tsconfig.build.json",
     "conformance": "npm run build && node conformance/run.mjs",
     "test": "vitest run",
@@ -45,7 +46,8 @@
     "fast-check": "^4.8.0",
     "playwright": "^1.61.1",
     "typescript": "^5.5.4",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "yamux-js": "^0.2.1"
   },
   "engines": {
     "node": ">=20"

@@ -21,6 +21,7 @@ npm install @stateforward/yamux.ts
 <!-- npm scripts from package.json -->
 
 - `npm run build`
+- `npm run benchmark`
 - `npm run conformance`
 - `npm test`
 - `npm run test:browser`
@@ -33,6 +34,12 @@ npm install @stateforward/yamux.ts
 <!-- native Go conformance runner from conformance/ -->
 
 `npm run conformance` builds this package and runs bidirectional echo, concurrency, half-close, reset, GOAWAY, peer-close, and malformed-frame cases against `github.com/hashicorp/yamux` pinned by `conformance/go.mod`.
+
+## Benchmark
+
+<!-- benchmark command from package.json#scripts.benchmark and comparison target from package.json#devDependencies -->
+
+`npm run benchmark` builds this package and compares client-opened echo streams over an in-memory transport against `yamux-js`.
 
 ## API
 
